@@ -1,8 +1,9 @@
 import axios from 'axios';
 import config from '../config/index.js';
 import ApiError from '../utils/apiError.js';
-import { ChatSession, QAAnalysis } from '../models/index.js';
+import { ChatSession, QAAnalysis, Ticket } from '../models/index.js';
 import ticketService from './ticketService.js';
+import { analyzeWithNatiqSafe, analyzeWithNatiqByTicketId } from './qa/natiqAnalysisService.js';
 
 const SYSTEM_PROMPT = `You are a strict, senior Customer Support QA and Conversation Intelligence analyst.
 
@@ -221,7 +222,17 @@ class QAService {
 
   async analyzeRaw(ticketData) {
     this._validateHasConversationContent(ticketData);
-    return callGroqQA(ticketData);
+    const oldResult = await callGroqQA(ticketData);
+    const natiqResult = await analyzeWithNatiqSafe(ticketData);
+
+    return {
+      ...oldResult,
+      oldAnalysis: oldResult.analysis,
+      natiqAnalysis: natiqResult?.analysis ?? null,
+      natiqMetadata: natiqResult
+        ? { analyzedAt: natiqResult.analyzedAt, provider: 'natiq' }
+        : null,
+    };
   }
 
   async analyzeById(companyId, ticketId) {
@@ -245,10 +256,16 @@ class QAService {
     const payload = this._buildTicketPayload(ticket, sessionMessages);
     this._validateHasConversationContent(payload);
 
-    const result = await callGroqQA(payload);
+    const oldResult = await callGroqQA(payload);
+    const natiqResult = await analyzeWithNatiqSafe(payload);
 
     return {
-      ...result,
+      ...oldResult,
+      oldAnalysis: oldResult.analysis,
+      natiqAnalysis: natiqResult?.analysis ?? null,
+      natiqMetadata: natiqResult
+        ? { analyzedAt: natiqResult.analyzedAt, provider: 'natiq' }
+        : null,
       ticket: {
         _id: ticket._id,
         ticketNumber: ticket.ticketNumber,
@@ -263,7 +280,7 @@ class QAService {
   async analyzeAndSaveByTicketId(companyId, ticketId) {
     try {
       const result = await this.analyzeById(companyId, ticketId);
-      const { analysis, metadata, ticket } = result;
+      const { analysis, natiqAnalysis, ticket } = result;
 
       // Extract high-level metrics safely
       const professionalismScore = analysis.agent_analysis?.agent_professionalism_score || 0;
@@ -293,10 +310,12 @@ class QAService {
             quality: qualityScore,
           },
           fullAnalysis: analysis,
+          natiqAnalysis: natiqAnalysis ?? null,
           metadata: {
             model: result.model,
             tokensUsed: result.tokensUsed,
             analyzedAt: new Date(result.analyzedAt),
+            natiq: result.natiqMetadata ?? null,
           },
         },
         { new: true, upsert: true }
@@ -323,6 +342,25 @@ class QAService {
         );
       } catch (err) { }
 
+      throw error;
+    }
+  }
+
+  async analyzeNatiqByTicketId(companyId, ticketId) {
+    try {
+      const result = await analyzeWithNatiqByTicketId(companyId, ticketId);
+      return {
+        ...result,
+        ticketId,
+        provider: 'natiq',
+      };
+    } catch (error) {
+      console.error('[QA Natiq] analyze by ticket failed', {
+        ticketId,
+        message: error?.message,
+        code: error?.code,
+        status: error?.response?.status,
+      });
       throw error;
     }
   }
