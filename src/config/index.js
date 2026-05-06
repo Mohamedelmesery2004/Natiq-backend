@@ -26,6 +26,11 @@ const config = {
     baseUrl: process.env.GROQ_BASE_URL || 'https://api.groq.com/openai/v1',
   },
 
+  natiq: {
+    analyzeUrl: process.env.NATIQ_ANALYZE_URL || 'https://bnsa3d-natiq.hf.space/analyze',
+    timeoutMs: parseInt(process.env.NATIQ_TIMEOUT_MS, 10) || 20000,
+  },
+
   huggingface: {
     apiToken: process.env.HF_API_TOKEN,
   },
