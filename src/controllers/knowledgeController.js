@@ -2,6 +2,7 @@ import { KnowledgeItem } from '../models/index.js';
 import slugify from 'slugify';
 import ApiError from '../utils/apiError.js';
 import BaseController from './baseController.js';
+import { recordAudit } from '../services/auditLogService.js';
 
 class KnowledgeController extends BaseController {
 
@@ -24,6 +25,15 @@ class KnowledgeController extends BaseController {
       features: features || [],
       slug: itemSlug,
       isActive: isActive !== undefined ? isActive : true,
+    });
+
+    await recordAudit({
+      companyId: req.companyId,
+      actor: req.user,
+      action: 'knowledge.created',
+      resourceType: 'knowledge_item',
+      targetId: item._id,
+      details: { title: item.title, slug: item.slug, type: item.type },
     });
 
     this.sendSuccess(res, { item }, 'Knowledge item created', 201);
@@ -82,6 +92,16 @@ class KnowledgeController extends BaseController {
     });
 
     await item.save();
+
+    await recordAudit({
+      companyId: req.companyId,
+      actor: req.user,
+      action: 'knowledge.updated',
+      resourceType: 'knowledge_item',
+      targetId: item._id,
+      details: { title: item.title, slug: item.slug },
+    });
+
     this.sendSuccess(res, { item: item.toJSON() }, 'Knowledge item updated');
   });
 
@@ -91,6 +111,16 @@ class KnowledgeController extends BaseController {
       companyId: req.companyId,
     });
     if (!item) throw ApiError.notFound('Knowledge item not found');
+
+    await recordAudit({
+      companyId: req.companyId,
+      actor: req.user,
+      action: 'knowledge.deleted',
+      resourceType: 'knowledge_item',
+      targetId: item._id,
+      details: { title: item.title, slug: item.slug },
+    });
+
     this.sendSuccess(res, null, 'Knowledge item deleted');
   });
 

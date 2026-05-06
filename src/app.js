@@ -21,6 +21,9 @@ import analyticsRoutes from './routes/analyticsRoutes.js';
 import agentRoutes from './routes/agentRoutes.js';
 import qaRoutes from './routes/qaRoutes.js';
 import callRoutes from './routes/callRoutes.js';
+import teamLeaderRoutes from './routes/teamLeaderRoutes.js';
+import managerRoutes from './routes/managerRoutes.js';
+import ownerRoutes from './routes/ownerRoutes.js';
 
 import { errorHandler, notFound } from './middlewares/errorMiddleware.js';
 
@@ -37,6 +40,7 @@ const limiter = rateLimit({
   max: config.rateLimit.max,
   message: { success: false, message: 'Too many requests, please try again later.' },
   validate: { xForwardedForHeader: false },
+  skip: () => config.env === 'development',
 });
 app.use('/api/', limiter);
 
@@ -58,8 +62,20 @@ import path from 'path';
 const __filename = url.fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+app.get('/', (req, res) => {
+  res.json({ success: true, message: 'NATIQ API is running', version: '1.0.0' });
+});
+
+app.get('/health', (req, res) => {
+  res.json({ success: true, status: 'healthy', timestamp: new Date() });
+});
+
 app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/platform', platformRoutes);
+app.use('/api/v1/admin/users', adminUserRoutes);
+app.use('/api/v1/admin/knowledge', knowledgeRoutes);
+app.use('/api/v1/admin/embeddings', embeddingRoutes);
+app.use('/api/v1/admin/management', managerRoutes);
 app.use('/api/v1/chat', chatRoutes);
 app.use('/api/v1/admin/chat', adminChatRoutes);
 app.use('/api/v1/tickets', ticketRoutes);
@@ -69,6 +85,8 @@ app.use('/api/v1/admin/analytics', analyticsRoutes);
 app.use('/api/v1/agent', agentRoutes);
 app.use('/api/v1/qa', qaRoutes);
 app.use('/api/v1/calls', callRoutes);
+app.use('/api/v1/team-leader', teamLeaderRoutes);
+app.use('/api/v1/owner', ownerRoutes);
 
 app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
 

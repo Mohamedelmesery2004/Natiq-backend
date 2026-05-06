@@ -119,8 +119,20 @@ const downloadFile = async (botToken, fileId, destFolder) => {
   }
 };
 
+const setWebhook = async (botToken, url, secretToken = null) => {
+  const payload = {
+    url,
+    drop_pending_updates: true,
+  };
+  if (secretToken) payload.secret_token = secretToken;
+
+  const resp = await axios.post(`https://api.telegram.org/bot${botToken}/setWebhook`, payload);
+  return resp.data;
+};
+
 export default {
   sendMessage,
   sendMedia,
   downloadFile,
+  setWebhook,
 };

@@ -1,6 +1,7 @@
 import ticketService from '../services/ticketService.js';
 import BaseController from './baseController.js';
 import { getIO } from '../sockets/index.js';
+import { recordAudit } from '../services/auditLogService.js';
 
 class AdminTicketController extends BaseController {
   listTickets = this.catchAsync(async (req, res) => {
@@ -41,6 +42,18 @@ class AdminTicketController extends BaseController {
       console.error('Socket emit error:', err.message);
     }
 
+    await recordAudit({
+      companyId: req.companyId,
+      actor: req.user,
+      action: 'ticket.updated',
+      resourceType: 'ticket',
+      targetId: ticket._id,
+      details: {
+        ticketNumber: ticket.ticketNumber,
+        patchKeys: Object.keys(req.body || {}),
+      },
+    });
+
     this.sendSuccess(res, { ticket }, 'Ticket updated');
   });
 
@@ -62,6 +75,15 @@ class AdminTicketController extends BaseController {
     } catch (err) {
       console.error('Socket emit error:', err.message);
     }
+
+    await recordAudit({
+      companyId: req.companyId,
+      actor: req.user,
+      action: 'ticket.note_added',
+      resourceType: 'ticket',
+      targetId: ticket._id,
+      details: { ticketNumber: ticket.ticketNumber },
+    });
 
     this.sendSuccess(res, { ticket }, 'Note added');
   });

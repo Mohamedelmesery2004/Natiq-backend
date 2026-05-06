@@ -1,7 +1,7 @@
 import { Ticket, User, ChatSession, Company } from '../../models/index.js';
 import { getIO } from '../../sockets/index.js';
 import { logEvent } from '../eventLogService.js';
-import { TICKET_STATUS, EVENT_TYPES, CHANNELS } from '../../constants/index.js';
+import { TICKET_STATUS, EVENT_TYPES, CHANNELS, ROLES } from '../../constants/index.js';
 import ApiError from '../../utils/apiError.js';
 import telegramService from '../telegramService.js';
 import config from '../../config/index.js';
@@ -38,7 +38,7 @@ class AgentTicketService {
     if (ticket.channel === CHANNELS.TELEGRAM && ticket.userId) {
       try {
         const company = await Company.findById(companyId);
-        const botToken = company.channelsConfig?.telegram?.botToken || config.telegram.botToken;
+        const botToken = company.channelsConfig?.telegram?.botToken;
         const user = await User.findById(ticket.userId._id);
 
                 if (user && user.telegramChatId && botToken) {
@@ -64,8 +64,14 @@ class AgentTicketService {
     return ticket;
   }
 
-  async agentReplyToTicket(companyId, ticketId, agentId, content, media = null) {
-    const ticket = await Ticket.findOne({ _id: ticketId, companyId, assignedTo: agentId });
+  async agentReplyToTicket(companyId, ticketId, agentId, content, media = null, userRole = null) {
+    const isManagerOrAbove = userRole && [ROLES.TEAM_LEADER, ROLES.COMPANY_MANAGER, ROLES.COMPANY_OWNER].includes(userRole);
+    
+    const query = isManagerOrAbove 
+      ? { _id: ticketId, companyId }
+      : { _id: ticketId, companyId, assignedTo: agentId };
+    
+    const ticket = await Ticket.findOne(query);
     if (!ticket) throw ApiError.forbidden('You can only reply to tickets assigned to you');
 
     ticket.agentNotes.push({
@@ -118,7 +124,7 @@ class AgentTicketService {
 
         if (session.channel === CHANNELS.TELEGRAM) {
           const company = await Company.findById(companyId);
-          const botToken = company.channelsConfig?.telegram?.botToken || config.telegram.botToken;
+          const botToken = company.channelsConfig?.telegram?.botToken;
           const user = await User.findById(session.userId);
 
           if (user?.telegramChatId && botToken) {
@@ -143,8 +149,14 @@ class AgentTicketService {
     return { ticket, session };
   }
 
-  async getTicketMessages(companyId, ticketId, agentId) {
-    const ticket = await Ticket.findOne({ _id: ticketId, companyId, assignedTo: agentId });
+  async getTicketMessages(companyId, ticketId, agentId, userRole = null) {
+    const isManagerOrAbove = userRole && [ROLES.TEAM_LEADER, ROLES.COMPANY_MANAGER, ROLES.COMPANY_OWNER].includes(userRole);
+    
+    const query = isManagerOrAbove 
+      ? { _id: ticketId, companyId }
+      : { _id: ticketId, companyId, assignedTo: agentId };
+    
+    const ticket = await Ticket.findOne(query);
     if (!ticket) throw ApiError.notFound('Ticket not found or not assigned to you');
 
     if (!ticket.context?.sessionId) {
@@ -254,8 +266,14 @@ class AgentTicketService {
     };
   }
 
-  async resolveTicket(companyId, ticketId, agentId) {
-    const ticket = await Ticket.findOne({ _id: ticketId, companyId, assignedTo: agentId });
+  async resolveTicket(companyId, ticketId, agentId, userRole = null) {
+    const isManagerOrAbove = userRole && [ROLES.TEAM_LEADER, ROLES.COMPANY_MANAGER, ROLES.COMPANY_OWNER].includes(userRole);
+    
+    const query = isManagerOrAbove 
+      ? { _id: ticketId, companyId }
+      : { _id: ticketId, companyId, assignedTo: agentId };
+    
+    const ticket = await Ticket.findOne(query);
     if (!ticket) throw ApiError.forbidden('You can only resolve tickets assigned to you');
 
     if (ticket.status === TICKET_STATUS.RESOLVED || ticket.status === TICKET_STATUS.CLOSED) {
@@ -264,6 +282,8 @@ class AgentTicketService {
 
     ticket.status = TICKET_STATUS.RESOLVED;
     if (!ticket.resolvedAt) ticket.resolvedAt = new Date();
+    if (!ticket.context) ticket.context = {};
+    ticket.context.analysisStatus = 'pending';
     await ticket.save();
 
     await logEvent({
@@ -274,13 +294,23 @@ class AgentTicketService {
       metadata: { agentId, ticketNumber: ticket.ticketNumber },
     });
 
+    qaService.analyzeAndSaveByTicketId(companyId, ticketId).catch((err) => {
+      console.error(`[QA Automation] Resolve trigger failed for ticket ${ticket.ticketNumber}:`, err.message);
+    });
+
     await this.sendFeedbackPromptToCustomer(ticket, companyId);
 
     return ticket;
   }
 
-  async closeTicket(companyId, ticketId, agentId) {
-    const ticket = await Ticket.findOne({ _id: ticketId, companyId, assignedTo: agentId });
+  async closeTicket(companyId, ticketId, agentId, userRole = null) {
+    const isManagerOrAbove = userRole && [ROLES.TEAM_LEADER, ROLES.COMPANY_MANAGER, ROLES.COMPANY_OWNER].includes(userRole);
+    
+    const query = isManagerOrAbove 
+      ? { _id: ticketId, companyId }
+      : { _id: ticketId, companyId, assignedTo: agentId };
+    
+    const ticket = await Ticket.findOne(query);
     if (!ticket) throw ApiError.forbidden('You can only close tickets assigned to you');
 
     if (ticket.status === TICKET_STATUS.CLOSED) {
@@ -335,7 +365,7 @@ class AgentTicketService {
       const customer = await User.findById(session.userId);
       if (!customer?.telegramChatId) return;
 
-      const botToken = company.channelsConfig?.telegram?.botToken || config.telegram.botToken;
+      const botToken = company.channelsConfig?.telegram?.botToken;
       const axios = (await import('axios')).default;
       try {
         await axios.post(`https://api.telegram.org/bot${botToken}/sendMessage`, {
@@ -380,15 +410,19 @@ class AgentTicketService {
     }
   }
 
-  async getAgentTickets(companyId, agentId, filters = {}) {
+  async getAgentTickets(companyId, agentId, filters = {}, userRole = null) {
     const { page = 1, limit = 20, status, priority, category, queue, channel } = filters;
 
     const query = { companyId };
+    const isManagerOrAbove = userRole && [ROLES.TEAM_LEADER, ROLES.COMPANY_MANAGER, ROLES.COMPANY_OWNER].includes(userRole);
 
     if (queue === 'unassigned') {
       query.assignedTo = null;
       query.status = TICKET_STATUS.OPEN;
-    } else {
+    } else if (queue === 'assigned') {
+      query.assignedTo = agentId;
+      query.status = { $in: [TICKET_STATUS.OPEN, TICKET_STATUS.IN_PROGRESS] };
+    } else if (!isManagerOrAbove) {
       query.assignedTo = agentId;
     }
 
@@ -412,8 +446,14 @@ class AgentTicketService {
     };
   }
 
-  async getAgentTicketById(companyId, ticketId, agentId) {
-    const ticket = await Ticket.findOne({ _id: ticketId, companyId, assignedTo: agentId })
+  async getAgentTicketById(companyId, ticketId, agentId, userRole = null) {
+    const isManagerOrAbove = userRole && [ROLES.TEAM_LEADER, ROLES.COMPANY_MANAGER, ROLES.COMPANY_OWNER].includes(userRole);
+    
+    const query = isManagerOrAbove 
+      ? { _id: ticketId, companyId }
+      : { _id: ticketId, companyId, assignedTo: agentId };
+    
+    const ticket = await Ticket.findOne(query)
       .populate('userId', 'name email phone')
       .populate('assignedTo', 'name email')
       .populate('agentNotes.agentId', 'name email');

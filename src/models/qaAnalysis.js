@@ -58,6 +58,18 @@ const qaAnalysisSchema = new mongoose.Schema(
         default: Date.now,
       },
     },
+
+    teamLeaderNotes: [
+      {
+        leaderId: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: 'User',
+          required: true,
+        },
+        content: { type: String, required: true, trim: true, maxlength: 8000 },
+        createdAt: { type: Date, default: Date.now },
+      },
+    ],
   },
   {
     timestamps: true,

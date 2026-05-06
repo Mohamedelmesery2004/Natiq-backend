@@ -15,34 +15,34 @@ router.use(protect, tenantIsolation);
 
 router.post(
   '/',
-  requirePermission(RESOURCES.KNOWLEDGE, ACTIONS.CREATE),
+  requirePermission(RESOURCES.KNOWLEDGE_BASE, ACTIONS.CREATE),
   validate(createKnowledge),
   knowledgeController.createKnowledgeItem
 );
 
 router.get(
   '/',
-  requirePermission(RESOURCES.KNOWLEDGE, ACTIONS.READ),
+  requirePermission(RESOURCES.KNOWLEDGE_BASE, ACTIONS.READ),
   validate(listKnowledge),
   knowledgeController.listKnowledgeItems
 );
 
 router.get(
   '/:id',
-  requirePermission(RESOURCES.KNOWLEDGE, ACTIONS.READ),
+  requirePermission(RESOURCES.KNOWLEDGE_BASE, ACTIONS.READ),
   knowledgeController.getKnowledgeItem
 );
 
 router.patch(
   '/:id',
-  requirePermission(RESOURCES.KNOWLEDGE, ACTIONS.UPDATE),
+  requirePermission(RESOURCES.KNOWLEDGE_BASE, ACTIONS.UPDATE),
   validate(updateKnowledge),
   knowledgeController.updateKnowledgeItem
 );
 
 router.delete(
   '/:id',
-  requirePermission(RESOURCES.KNOWLEDGE, ACTIONS.DELETE),
+  requirePermission(RESOURCES.KNOWLEDGE_BASE, ACTIONS.DELETE),
   knowledgeController.deleteKnowledgeItem
 );
 

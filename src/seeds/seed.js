@@ -30,9 +30,12 @@ const seed = async () => {
     const company = await Company.create({
       name: 'Prime Store',
       slug: 'prime-store',
-      industry: 'telecom',
+      industry: 'sports_retail',
       channelsConfig: {
-        telegram: { isActive: true },
+        telegram: { 
+          isActive: true,
+          botToken: '8462814216:AAFrx9oIyJ0phTZWjp0ZZuHY1NbZRMqq7nQ'
+        },
         whatsapp: { isActive: true },
         webChat: { isActive: true },
       },
@@ -52,6 +55,15 @@ const seed = async () => {
       role: ROLES.PLATFORM_SUPER_ADMIN,
     });
     console.log(`Super Admin: ${superAdmin.email} / admin123`);
+
+    const owner = await User.create({
+      companyId: company._id,
+      name: 'Owner Prime Store',
+      email: 'owner@primestore.com',
+      passwordHash: 'owner123',
+      role: ROLES.COMPANY_OWNER,
+    });
+    console.log(`Company Owner: ${owner.email} / owner123`);
 
     const manager = await User.create({
       companyId: company._id,
@@ -77,6 +89,7 @@ const seed = async () => {
       email: 'omar@primestore.com',
       passwordHash: 'agent123',
       role: ROLES.AGENT,
+      teamLeaderId: teamLeader._id,
     });
     console.log(`Agent: ${agent1.email} / agent123`);
 
@@ -86,6 +99,7 @@ const seed = async () => {
       email: 'fatima@primestore.com',
       passwordHash: 'agent123',
       role: ROLES.AGENT,
+      teamLeaderId: teamLeader._id,
     });
     console.log(`Agent: ${agent2.email} / agent123`);
 
@@ -198,8 +212,9 @@ const seed = async () => {
     console.log('  SEED COMPLETE');
     console.log('==========================================');
     console.log(`\nCompany: ${company.name} (slug: ${company.slug})`);
-    console.log('\nTest Accounts:');
+    console.log('Test Accounts:');
     console.log('  Super Admin:  admin@primestore.com / admin123');
+    console.log('  Owner:        owner@primestore.com / owner123');
     console.log('  Manager:      manager@primestore.com / manager123');
     console.log('  Team Leader:  teamlead@primestore.com / teamlead123');
     console.log('  Agent (Omar): omar@primestore.com / agent123');
@@ -210,6 +225,9 @@ const seed = async () => {
     console.log('  1. npm run dev');
     console.log('  2. Login: POST /api/v1/auth/login { email, password, companySlug: "prime-store" }');
     console.log('  3. Sync embeddings: POST /api/v1/admin/embeddings/sync');
+    console.log('  4. Manager audit logs: GET /api/v1/admin/management/audit-logs');
+    console.log('  5. RBAC matrix: GET /api/v1/admin/management/rbac-matrix');
+    console.log('  6. CSV exports: GET /api/v1/admin/management/exports/calls|tickets|analytics-summary');
     console.log('  4. Start chatting: POST /api/v1/chat/sessions + POST /api/v1/chat/sessions/:id/messages');
     console.log('==========================================\n');
 

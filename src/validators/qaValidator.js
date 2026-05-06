@@ -52,6 +52,7 @@ const getResults = {
   query: Joi.object({
     page: Joi.number().integer().min(1).optional(),
     limit: Joi.number().integer().min(1).max(100).optional(),
+    ticketId: Joi.string().optional(),
     agentId: Joi.string().optional(),
     sentiment: Joi.string().optional(),
     status: Joi.string().optional(),

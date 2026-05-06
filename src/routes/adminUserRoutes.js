@@ -42,4 +42,11 @@ router.delete(
   adminUserController.deleteUser
 );
 
+router.post(
+  '/assign-team-leader',
+  requirePermission(RESOURCES.USERS, ACTIONS.UPDATE),
+  validate(userValidator.assignTeamLeader),
+  adminUserController.assignTeamLeader
+);
+
 export default router;

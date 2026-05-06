@@ -8,6 +8,7 @@ import asyncHandler from '../utils/asyncHandler.js';
 import { sendSuccess } from '../utils/response.js';
 import config from '../config/index.js';
 import { getIO } from '../sockets/index.js';
+import { recordAudit } from '../services/auditLogService.js';
 
 const listSessions = asyncHandler(async (req, res) => {
   const { page, limit, status, channel, userId } = req.query;
@@ -31,6 +32,14 @@ const getSessionDetails = asyncHandler(async (req, res) => {
 
 const deleteSession = asyncHandler(async (req, res) => {
   await chatSessionManager.deleteSession(req.companyId, req.params.sessionId);
+  await recordAudit({
+    companyId: req.companyId,
+    actor: req.user,
+    action: 'chat_session.deleted',
+    resourceType: 'chat_session',
+    targetId: null,
+    details: { sessionId: req.params.sessionId },
+  });
   sendSuccess(res, null, 'Session deleted');
 });
 
@@ -71,7 +80,7 @@ const takeoverSession = asyncHandler(async (req, res) => {
   const customer = await User.findById(session.userId);
 
   if (session.channel === CHANNELS.TELEGRAM && customer?.telegramChatId) {
-    const botToken = company?.channelsConfig?.telegram?.botToken || config.telegram.botToken;
+    const botToken = company?.channelsConfig?.telegram?.botToken;
     try {
       await axios.post(`https://api.telegram.org/bot${botToken}/sendMessage`, {
         chat_id: customer.telegramChatId,
@@ -132,7 +141,7 @@ const agentReply = asyncHandler(async (req, res) => {
   const customer = await User.findById(session.userId);
 
   if (session.channel === CHANNELS.TELEGRAM && customer?.telegramChatId) {
-    const botToken = company?.channelsConfig?.telegram?.botToken || config.telegram.botToken;
+    const botToken = company?.channelsConfig?.telegram?.botToken;
     try {
       await axios.post(`https://api.telegram.org/bot${botToken}/sendMessage`, {
         chat_id: customer.telegramChatId,
@@ -186,7 +195,7 @@ const releaseSession = asyncHandler(async (req, res) => {
   const customer = await User.findById(session.userId);
 
   if (session.channel === CHANNELS.TELEGRAM && customer?.telegramChatId) {
-    const botToken = company?.channelsConfig?.telegram?.botToken || config.telegram.botToken;
+    const botToken = company?.channelsConfig?.telegram?.botToken;
     try {
       await axios.post(`https://api.telegram.org/bot${botToken}/sendMessage`, {
         chat_id: customer.telegramChatId,

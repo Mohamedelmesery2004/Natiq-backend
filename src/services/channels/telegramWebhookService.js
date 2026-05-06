@@ -34,13 +34,46 @@ class TelegramWebhookService {
   async processWebhook(body, query, headers) {
     const { message, callback_query } = body;
 
-    const companySlug = query.companySlug || headers['x-company-slug'];
-    if (!companySlug) return { ok: true, error: 'No company slug provided' };
+    // Support multiple webhook providers:
+    // - query ?companySlug=...
+    // - header x-company-slug
+    // - body.companySlug (some relay/proxy setups)
+    const providedSlug =
+      query?.companySlug ||
+      headers?.['x-company-slug'] ||
+      body?.companySlug ||
+      null;
 
-    const company = await Company.findOne({ slug: companySlug, isActive: true });
-    if (!company) return { ok: true, error: 'Company not found' };
+    let company = null;
+    if (providedSlug) {
+      company = await Company.findOne({ slug: providedSlug, isActive: true });
+      if (!company) {
+        return { ok: true, error: 'Company not found' };
+      }
+    } else {
+      // Fallback: if only one active company has Telegram configured, use it.
+      // This avoids "silent no reply" when webhook URL misses companySlug.
+      const fallbackCompanies = await Company.find({
+        isActive: true,
+        'channelsConfig.telegram.isActive': true,
+        'channelsConfig.telegram.botToken': { $exists: true, $ne: '' },
+      })
+        .select('_id slug channelsConfig.telegram.botToken')
+        .limit(2);
 
-    const botToken = company.channelsConfig?.telegram?.botToken || config.telegram.botToken;
+      if (fallbackCompanies.length === 1) {
+        company = fallbackCompanies[0];
+      } else {
+        console.warn(
+          '[TelegramWebhook] Missing companySlug and cannot resolve unique company. ' +
+            `Candidates: ${fallbackCompanies.length}`
+        );
+        return { ok: true, error: 'No company slug provided' };
+      }
+    }
+
+    const botToken = company.channelsConfig?.telegram?.botToken;
+    if (!botToken) return { ok: true, error: 'Telegram bot token not configured' };
 
     if (callback_query) {
       const data = callback_query.data;

@@ -30,7 +30,7 @@ const listAgentTickets = {
     status: Joi.string().valid(...Object.values(TICKET_STATUS)),
     priority: Joi.string().valid(...Object.values(TICKET_PRIORITY)),
     category: Joi.string().valid(...Object.values(TICKET_CATEGORY)),
-    queue: Joi.string().valid('unassigned'),
+    queue: Joi.string().valid('unassigned', 'assigned').allow('', null),
   }),
 };
 
@@ -69,4 +69,48 @@ const sessionIdParam = {
   }),
 };
 
-export { agentLogin, updateProfile, listAgentTickets, ticketIdParam, agentReply, dashboardOverview, sessionIdParam };
+const createTask = {
+  body: Joi.object({
+    title: Joi.string().required().trim().min(1).max(500),
+    date: Joi.string().required().regex(/^\d{4}-\d{2}-\d{2}$/),
+    time: Joi.string().allow(null, '').regex(/^([01]\d|2[0-3]):?([0-5]\d)$/),
+  }),
+};
+
+const getTasks = {
+  query: Joi.object({
+    date: Joi.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  }),
+};
+
+const updateTask = {
+  params: Joi.object({
+    taskId: Joi.string().required(),
+  }),
+  body: Joi.object({
+    title: Joi.string().trim().min(1).max(500),
+    date: Joi.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    time: Joi.string().allow(null, '').regex(/^([01]\d|2[0-3]):?([0-5]\d)$/),
+    done: Joi.boolean(),
+  }),
+};
+
+const deleteTask = {
+  params: Joi.object({
+    taskId: Joi.string().required(),
+  }),
+};
+
+export { 
+  agentLogin, 
+  updateProfile, 
+  listAgentTickets, 
+  ticketIdParam, 
+  agentReply, 
+  dashboardOverview, 
+  sessionIdParam,
+  createTask,
+  getTasks,
+  updateTask,
+  deleteTask
+};

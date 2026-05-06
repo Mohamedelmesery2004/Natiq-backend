@@ -178,7 +178,7 @@ const callGroqQA = async (ticketPayload) => {
       model: config.groq.model,
       messages: [
         { role: 'system', content: SYSTEM_PROMPT },
-        { role: 'user',   content: userMessage   },
+        { role: 'user', content: userMessage },
       ],
       temperature: 0.1,
       max_tokens: 4096,
@@ -210,8 +210,8 @@ const callGroqQA = async (ticketPayload) => {
   }
 
   return {
-    analysis:   parsed,
-    model:      config.groq.model,
+    analysis: parsed,
+    model: config.groq.model,
     tokensUsed: response.data.usage?.total_tokens ?? null,
     analyzedAt: new Date().toISOString(),
   };
@@ -228,11 +228,11 @@ class QAService {
     const ticket = await ticketService.getTicketById(companyId, ticketId);
 
     let sessionMessages = [];
-    
+
     // 1. Check for conversation snapshot from resolution time (most reliable)
     if (ticket.context?.conversationSnapshot?.length > 0) {
       sessionMessages = ticket.context.conversationSnapshot;
-    } 
+    }
     // 2. Fall back to active ChatSession if snapshot is missing
     else if (ticket.context?.sessionId) {
       const session = await ChatSession.findOne({
@@ -250,12 +250,12 @@ class QAService {
     return {
       ...result,
       ticket: {
-        _id:          ticket._id,
+        _id: ticket._id,
         ticketNumber: ticket.ticketNumber,
-        status:       ticket.status,
-        channel:      ticket.channel,
-        category:     ticket.category,
-        priority:     ticket.priority,
+        status: ticket.status,
+        channel: ticket.channel,
+        category: ticket.category,
+        priority: ticket.priority,
       },
     };
   }
@@ -308,21 +308,21 @@ class QAService {
           { _id: ticketId, companyId },
           { $set: { 'context.analysisStatus': 'completed' } }
         );
-      } catch (err) {}
+      } catch (err) { }
 
       console.log(`[QA Automation] Successfully saved analysis for ticket ${fullTicket.ticketNumber}`);
       return savedAnalysis;
     } catch (error) {
       console.error(`[QA Automation] Detailed Error for ticket ${ticketId}:`, error);
-      
+
       // Mark as failed
       try {
         await Ticket.updateOne(
           { _id: ticketId, companyId },
           { $set: { 'context.analysisStatus': 'failed' } }
         );
-      } catch (err) {}
-      
+      } catch (err) { }
+
       throw error;
     }
   }
@@ -331,6 +331,7 @@ class QAService {
     const {
       page = 1,
       limit = 20,
+      ticketId,
       agentId,
       sentiment,
       status,
@@ -338,6 +339,7 @@ class QAService {
     } = filters;
 
     const query = { companyId };
+    if (ticketId) query.ticketId = ticketId;
     if (agentId) query.agentId = agentId;
     if (sentiment) query.customerSentiment = sentiment;
     if (status) query.resolutionStatus = status;
@@ -378,24 +380,24 @@ class QAService {
       .filter((m) => typeof m.content === 'string' && m.content.trim())
       .slice(-60)
       .map((m) => ({
-        role:      m.role,
-        content:   m.content.trim(),
+        role: m.role,
+        content: m.content.trim(),
         timestamp: m.timestamp,
-        isSystem:  m.meta?.type === 'system_escalation' || m.role === 'assistant',
+        isSystem: m.meta?.type === 'system_escalation' || m.role === 'assistant',
       }));
 
     return {
-      ticketNumber:    ticket.ticketNumber,
-      channel:         ticket.channel,
-      category:        ticket.category,
-      priority:        ticket.priority,
-      status:          ticket.status,
-      createdAt:       ticket.createdAt,
-      resolvedAt:      ticket.resolvedAt      ?? null,
+      ticketNumber: ticket.ticketNumber,
+      channel: ticket.channel,
+      category: ticket.category,
+      priority: ticket.priority,
+      status: ticket.status,
+      createdAt: ticket.createdAt,
+      resolvedAt: ticket.resolvedAt ?? null,
       firstResponseAt: ticket.firstResponseAt ?? null,
 
       customer: {
-        name:  ticket.userId?.name  ?? 'Unknown',
+        name: ticket.userId?.name ?? 'Unknown',
         email: ticket.userId?.email ?? null,
       },
 
@@ -407,14 +409,14 @@ class QAService {
 
       agentNotes: (ticket.agentNotes ?? []).map((n) => ({
         agentName: n.agentId?.name ?? 'Agent',
-        content:   n.content,
+        content: n.content,
         createdAt: n.createdAt,
       })),
       conversation,
       conversationStats: {
-        total:  conversation.length,
-        user:   conversation.filter((m) => m.role === 'user').length,
-        agent:  conversation.filter((m) => m.role === 'agent').length,
+        total: conversation.length,
+        user: conversation.filter((m) => m.role === 'user').length,
+        agent: conversation.filter((m) => m.role === 'agent').length,
         system: conversation.filter((m) => m.isSystem).length,
       },
     };

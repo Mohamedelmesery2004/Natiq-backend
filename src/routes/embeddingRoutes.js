@@ -9,19 +9,19 @@ router.use(protect, tenantIsolation);
 
 router.get(
   '/status',
-  requirePermission(RESOURCES.KNOWLEDGE, ACTIONS.READ),
+  requirePermission(RESOURCES.KNOWLEDGE_BASE, ACTIONS.READ),
   embeddingController.getStatus
 );
 
 router.post(
   '/sync',
-  requirePermission(RESOURCES.KNOWLEDGE, ACTIONS.UPDATE),
+  requirePermission(RESOURCES.KNOWLEDGE_BASE, ACTIONS.UPDATE),
   embeddingController.syncEmbeddings
 );
 
 router.post(
   '/items/:id',
-  requirePermission(RESOURCES.KNOWLEDGE, ACTIONS.UPDATE),
+  requirePermission(RESOURCES.KNOWLEDGE_BASE, ACTIONS.UPDATE),
   embeddingController.embedSingleItem
 );
 

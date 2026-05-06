@@ -11,9 +11,9 @@ class QAController extends BaseController {
   analyzeById = this.catchAsync(async (req, res) => {
     const { ticketId } = req.params;
 
-    const result = await qaService.analyzeById(req.companyId, ticketId);
+    const saved = await qaService.analyzeAndSaveByTicketId(req.companyId, ticketId);
 
-    this.sendSuccess(res, result, 'QA analysis completed successfully');
+    this.sendSuccess(res, saved, 'QA analysis completed successfully');
   });
 
   getAutomatedResults = this.catchAsync(async (req, res) => {

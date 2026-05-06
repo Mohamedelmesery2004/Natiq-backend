@@ -1,5 +1,7 @@
 import { Router } from 'express';
 import agentController from '../controllers/agentController.js';
+import taskController from '../controllers/taskController.js';
+
 import { protect, tenantIsolation, allowRoles } from '../middlewares/authMiddleware.js';
 import validate from '../middlewares/validateMiddleware.js';
 import * as agentValidator from '../validators/agentValidator.js';
@@ -11,7 +13,7 @@ const router = Router();
 
 router.post('/auth/login', validate(agentValidator.agentLogin), agentController.login);
 
-router.use(protect, tenantIsolation, allowRoles(ROLES.AGENT));
+router.use(protect, tenantIsolation, allowRoles(ROLES.AGENT, ROLES.TEAM_LEADER, ROLES.COMPANY_MANAGER, ROLES.COMPANY_OWNER));
 
 router.get('/profile', agentController.getProfile);
 router.patch('/profile', upload.single('profileImage'), validate(agentValidator.updateProfile), agentController.updateProfile);
@@ -28,5 +30,17 @@ router.post('/tickets/:ticketId/resolve', validate(agentValidator.ticketIdParam)
 router.post('/tickets/:ticketId/close', validate(agentValidator.ticketIdParam), agentController.closeTicket);
 
 router.get('/chat-history/:sessionId', validate(agentValidator.sessionIdParam), agentController.getChatHistory);
+
+// Notification Routes
+router.get('/notifications', agentController.getNotifications);
+router.patch('/notifications/:notificationId/read', agentController.markNotificationAsRead);
+router.patch('/notifications/read-all', agentController.markAllNotificationsAsRead);
+
+// Task Routes
+router.get('/tasks', validate(agentValidator.getTasks), taskController.getTasks);
+router.post('/tasks', validate(agentValidator.createTask), taskController.createTask);
+router.patch('/tasks/:taskId', validate(agentValidator.updateTask), taskController.updateTask);
+router.delete('/tasks/:taskId', validate(agentValidator.deleteTask), taskController.deleteTask);
+
 
 export default router;

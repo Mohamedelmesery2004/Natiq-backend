@@ -2,11 +2,12 @@ import { User } from '../models/index.js';
 import ApiError from '../utils/apiError.js';
 import { ROLES } from '../constants/index.js';
 import BaseController from './baseController.js';
+import { recordAudit } from '../services/auditLogService.js';
 
 class AdminUserController extends BaseController {
 
   createUser = this.catchAsync(async (req, res) => {
-    const { name, email, password, phone, role, profileImage } = req.body;
+    const { name, email, password, phone, role, profileImage, teamLeaderId } = req.body;
 
     if (req.userRole === ROLES.TEAM_LEADER && role === ROLES.COMPANY_MANAGER) {
       throw ApiError.forbidden('Team leaders cannot create company managers');
@@ -17,7 +18,7 @@ class AdminUserController extends BaseController {
       throw ApiError.conflict('User with this email already exists in this company');
     }
 
-    const user = await User.create({
+    const payload = {
       companyId: req.companyId,
       name,
       email,
@@ -25,6 +26,20 @@ class AdminUserController extends BaseController {
       phone: phone || null,
       role,
       profileImage: profileImage || null,
+    };
+    if (role === ROLES.AGENT && teamLeaderId !== undefined) {
+      payload.teamLeaderId = teamLeaderId || null;
+    }
+
+    const user = await User.create(payload);
+
+    await recordAudit({
+      companyId: req.companyId,
+      actor: req.user,
+      action: 'user.created',
+      resourceType: 'user',
+      targetId: user._id,
+      details: { email: user.email, role: user.role },
     });
 
     this.sendSuccess(res, { user: user.toJSON() }, 'User created successfully', 201);
@@ -48,7 +63,8 @@ class AdminUserController extends BaseController {
       .sort({ createdAt: -1 })
       .skip((parseInt(page) - 1) * parseInt(limit))
       .limit(parseInt(limit))
-      .select('-passwordHash');
+      .select('-passwordHash')
+      .populate('teamLeaderId', 'name email');
 
     this.sendPaginated(res, users, {
       page: parseInt(page),
@@ -60,7 +76,8 @@ class AdminUserController extends BaseController {
 
   getUser = this.catchAsync(async (req, res) => {
     const user = await User.findOne({ _id: req.params.id, companyId: req.companyId })
-      .select('-passwordHash');
+      .select('-passwordHash')
+      .populate('teamLeaderId', 'name email');
     if (!user) throw ApiError.notFound('User not found');
     this.sendSuccess(res, { user });
   });
@@ -69,14 +86,34 @@ class AdminUserController extends BaseController {
     const user = await User.findOne({ _id: req.params.id, companyId: req.companyId });
     if (!user) throw ApiError.notFound('User not found');
 
-    const allowed = ['name', 'phone', 'role', 'isActive', 'profileImage'];
+    const allowed = ['name', 'phone', 'role', 'isActive', 'profileImage', 'teamLeaderId'];
     allowed.forEach((field) => {
       if (req.body[field] !== undefined) {
+        if (field === 'teamLeaderId' && user.role !== ROLES.AGENT) {
+          return;
+        }
         user[field] = req.body[field];
       }
     });
 
+    if (user.role !== ROLES.AGENT) {
+      user.teamLeaderId = null;
+    }
+
     await user.save();
+
+    await recordAudit({
+      companyId: req.companyId,
+      actor: req.user,
+      action: 'user.updated',
+      resourceType: 'user',
+      targetId: user._id,
+      details: {
+        email: user.email,
+        updatedFields: Object.keys(req.body).filter((k) => req.body[k] !== undefined),
+      },
+    });
+
     this.sendSuccess(res, { user: user.toJSON() }, 'User updated successfully');
   });
 
@@ -86,7 +123,48 @@ class AdminUserController extends BaseController {
 
     user.isActive = false;
     await user.save();
+
+    await recordAudit({
+      companyId: req.companyId,
+      actor: req.user,
+      action: 'user.deactivated',
+      resourceType: 'user',
+      targetId: user._id,
+      details: { email: user.email },
+    });
+
     this.sendSuccess(res, null, 'User deactivated successfully');
+  });
+
+  assignTeamLeader = this.catchAsync(async (req, res) => {
+    const { agentIds, teamLeaderId } = req.body;
+
+    if (!agentIds || !Array.isArray(agentIds) || agentIds.length === 0) {
+      throw ApiError.badRequest('agentIds must be a non-empty array');
+    }
+
+    if (teamLeaderId) {
+      const tl = await User.findOne({ _id: teamLeaderId, companyId: req.companyId, role: ROLES.TEAM_LEADER });
+      if (!tl) {
+        throw ApiError.badRequest('Invalid teamLeaderId - team leader not found');
+      }
+    }
+
+    const result = await User.updateMany(
+      { _id: { $in: agentIds }, companyId: req.companyId, role: ROLES.AGENT },
+      { $set: { teamLeaderId: teamLeaderId || null } }
+    );
+
+    await recordAudit({
+      companyId: req.companyId,
+      actor: req.user,
+      action: 'users.assignTeamLeader',
+      resourceType: 'user',
+      targetId: teamLeaderId,
+      details: { agentIds, teamLeaderId },
+    });
+
+    this.sendSuccess(res, { modifiedCount: result.modifiedCount }, 'Agents assigned to team leader');
   });
 
 }

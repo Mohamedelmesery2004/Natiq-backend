@@ -3,6 +3,7 @@ import path from 'path';
 import agentDashboardService from '../services/agent/agentDashboardService.js';
 import agentProfileService from '../services/agent/agentProfileService.js';
 import agentTicketService from '../services/agent/agentTicketService.js';
+import notificationService from '../services/notificationService.js';
 import { User, Company, ChatSession } from '../models/index.js';
 import { generateToken } from '../middlewares/authMiddleware.js';
 import { ROLES, CHANNELS } from '../constants/index.js';
@@ -22,7 +23,14 @@ class AgentController extends BaseController {
     const user = await User.findOne({ companyId: company._id, email });
     if (!user) throw ApiError.unauthorized('Invalid email or password');
     if (!user.isActive) throw ApiError.unauthorized('Account is deactivated');
-    if (user.role !== ROLES.AGENT) throw ApiError.forbidden('This login is for agents only');
+    if (
+      user.role !== ROLES.AGENT &&
+      user.role !== ROLES.TEAM_LEADER &&
+      user.role !== ROLES.COMPANY_MANAGER &&
+      user.role !== ROLES.COMPANY_OWNER
+    ) {
+      throw ApiError.forbidden('This login is for agents, team leaders, managers, and company owners');
+    }
 
     const isMatch = await user.comparePassword(password);
     if (!isMatch) throw ApiError.unauthorized('Invalid email or password');
@@ -80,15 +88,17 @@ class AgentController extends BaseController {
         const company = await Company.findById(req.companyId);
 
         if (session.channel === CHANNELS.TELEGRAM && customer?.telegramChatId) {
-          const botToken = company?.channelsConfig?.telegram?.botToken || config.telegram.botToken;
-          try {
-            await axios.post(`https://api.telegram.org/bot${botToken}/sendMessage`, {
-              chat_id: customer.telegramChatId,
-              text: `An agent (*${req.user.name}*) has picked up your ticket *#${ticket.ticketNumber}* and will assist you shortly. Please stay connected!`,
-              parse_mode: 'Markdown',
-            });
-          } catch (err) {
-            console.error('Telegram claim notify error:', err.response?.data || err.message);
+          const botToken = company?.channelsConfig?.telegram?.botToken;
+          if (botToken) {
+            try {
+              await axios.post(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+                chat_id: customer.telegramChatId,
+                text: `An agent (*${req.user.name}*) has picked up your ticket *#${ticket.ticketNumber}* and will assist you shortly. Please stay connected!`,
+                parse_mode: 'Markdown',
+              });
+            } catch (err) {
+              console.error('Telegram claim notify error:', err.response?.data || err.message);
+            }
           }
         }
 
@@ -131,7 +141,9 @@ class AgentController extends BaseController {
       req.companyId,
       req.params.ticketId,
       req.userId,
-      req.body.content
+      req.body.content,
+      null,
+      req.userRole
     );
 
     if (session) {
@@ -202,7 +214,8 @@ class AgentController extends BaseController {
       ticketId,
       req.userId,
       content || `[Sent a ${mediaType}: ${req.file.originalname}]`,
-      media
+      media,
+      req.userRole
     );
 
     if (session && session.channel === CHANNELS.WEB) {
@@ -246,7 +259,7 @@ class AgentController extends BaseController {
   });
 
   resolveTicket = this.catchAsync(async (req, res) => {
-    const ticket = await agentTicketService.resolveTicket(req.companyId, req.params.ticketId, req.userId);
+    const ticket = await agentTicketService.resolveTicket(req.companyId, req.params.ticketId, req.userId, req.userRole);
 
     try {
       const io = getIO();
@@ -264,7 +277,7 @@ class AgentController extends BaseController {
   });
 
   closeTicket = this.catchAsync(async (req, res) => {
-    const ticket = await agentTicketService.closeTicket(req.companyId, req.params.ticketId, req.userId);
+    const ticket = await agentTicketService.closeTicket(req.companyId, req.params.ticketId, req.userId, req.userRole);
 
     try {
       const io = getIO();
@@ -282,17 +295,17 @@ class AgentController extends BaseController {
   });
 
   listTickets = this.catchAsync(async (req, res) => {
-    const result = await agentTicketService.getAgentTickets(req.companyId, req.userId, req.query);
+    const result = await agentTicketService.getAgentTickets(req.companyId, req.userId, req.query, req.userRole);
     this.sendSuccess(res, result);
   });
 
   getTicket = this.catchAsync(async (req, res) => {
-    const ticket = await agentTicketService.getAgentTicketById(req.companyId, req.params.ticketId, req.userId);
+    const ticket = await agentTicketService.getAgentTicketById(req.companyId, req.params.ticketId, req.userId, req.userRole);
     this.sendSuccess(res, { ticket });
   });
 
   getTicketMessages = this.catchAsync(async (req, res) => {
-    const data = await agentTicketService.getTicketMessages(req.companyId, req.params.ticketId, req.userId);
+    const data = await agentTicketService.getTicketMessages(req.companyId, req.params.ticketId, req.userId, req.userRole);
     this.sendSuccess(res, data);
   });
 
@@ -310,6 +323,21 @@ class AgentController extends BaseController {
       req.query
     );
     this.sendSuccess(res, history);
+  });
+
+  getNotifications = this.catchAsync(async (req, res) => {
+    const result = await notificationService.getAgentNotifications(req.companyId, req.userId, req.query);
+    this.sendSuccess(res, result);
+  });
+
+  markNotificationAsRead = this.catchAsync(async (req, res) => {
+    const notification = await notificationService.markAsRead(req.companyId, req.userId, req.params.notificationId);
+    this.sendSuccess(res, { notification }, 'Notification marked as read');
+  });
+
+  markAllNotificationsAsRead = this.catchAsync(async (req, res) => {
+    await notificationService.markAllAsRead(req.companyId, req.userId);
+    this.sendSuccess(res, null, 'All notifications marked as read');
   });
 
 }

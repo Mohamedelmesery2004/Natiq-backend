@@ -1,5 +1,6 @@
 import mongoose from 'mongoose';
-import { Ticket, User, TicketFeedback } from '../../models/index.js';
+import { Ticket, User, TicketFeedback, Call } from '../../models/index.js';
+
 import { TICKET_STATUS, TICKET_PRIORITY } from '../../constants/index.js';
 
 class AgentDashboardService {
@@ -18,9 +19,16 @@ class AgentDashboardService {
       pendingTicketsCount,
       resolvedTicketsCount,
       closedTicketsCount,
-      totalAssigned,
+      totalAssignedCount,
       avgFirstResponseAgg,
       avgResolutionAgg,
+      totalCallsCount,
+      answeredCallsCount,
+      missedCallsCount,
+      avgCallDurationAgg,
+      channelDistribution,
+      profile,
+      feedbackAgg,
     ] = await Promise.all([
       Ticket.countDocuments({
         ...baseMatch,
@@ -42,7 +50,43 @@ class AgentDashboardService {
         { $project: { resolutionTime: { $subtract: ['$resolvedAt', '$createdAt'] } } },
         { $group: { _id: null, avgTime: { $avg: '$resolutionTime' } } },
       ]),
+      Call.countDocuments({ companyId: new mongoose.Types.ObjectId(companyId), agentId: new mongoose.Types.ObjectId(agentId) }),
+      Call.countDocuments({ companyId: new mongoose.Types.ObjectId(companyId), agentId: new mongoose.Types.ObjectId(agentId), answeredAt: { $ne: null } }),
+      Call.countDocuments({ companyId: new mongoose.Types.ObjectId(companyId), agentId: new mongoose.Types.ObjectId(agentId), status: 'missed' }),
+      Call.aggregate([
+        { $match: { companyId: new mongoose.Types.ObjectId(companyId), agentId: new mongoose.Types.ObjectId(agentId), answeredAt: { $ne: null } } },
+        { $group: { _id: null, avgDuration: { $avg: '$duration' } } },
+      ]),
+      Ticket.aggregate([
+        { $match: baseMatch },
+        { $group: { _id: '$channel', count: { $sum: 1 } } },
+        { $sort: { count: -1 } },
+      ]),
+      User.findById(agentId).select('name email phone profileImage role lastLogin').lean(),
+      TicketFeedback.aggregate([
+        { $match: { companyId: new mongoose.Types.ObjectId(companyId), agentId: new mongoose.Types.ObjectId(agentId) } },
+        {
+          $group: {
+            _id: null,
+            totalRatings: { $sum: 1 },
+            avgRating: { $avg: '$rating' },
+            satisfiedCount: {
+              $sum: { $cond: [{ $gte: ['$rating', 4] }, 1, 0] }
+            },
+            count1Star: { $sum: { $cond: [{ $eq: ['$rating', 1] }, 1, 0] } },
+            count2Star: { $sum: { $cond: [{ $eq: ['$rating', 2] }, 1, 0] } },
+            count3Star: { $sum: { $cond: [{ $eq: ['$rating', 3] }, 1, 0] } },
+            count4Star: { $sum: { $cond: [{ $eq: ['$rating', 4] }, 1, 0] } },
+            count5Star: { $sum: { $cond: [{ $eq: ['$rating', 5] }, 1, 0] } }
+          }
+        }
+      ]),
     ]);
+
+    const totalCalls = totalCallsCount || 0;
+    const answeredCalls = answeredCallsCount || 0;
+    const missedCalls = missedCallsCount || 0;
+    const avgCallDurationSec = avgCallDurationAgg[0] ? Math.round(avgCallDurationAgg[0].avgDuration) : 0;
 
     const avgFirstResponseTime = avgFirstResponseAgg[0]
       ? Math.round(avgFirstResponseAgg[0].avgTime / 60000)
@@ -72,34 +116,7 @@ class AgentDashboardService {
       ]),
     ]);
 
-    const channelDistribution = await Ticket.aggregate([
-      { $match: baseMatch },
-      { $group: { _id: '$channel', count: { $sum: 1 } } },
-      { $sort: { count: -1 } },
-    ]);
-
     const channelTotal = channelDistribution.reduce((sum, c) => sum + c.count, 0) || 1;
-
-    const profile = await User.findById(agentId).select('name email phone profileImage role lastLogin');
-
-    const feedbackAgg = await TicketFeedback.aggregate([
-      { $match: { companyId: new mongoose.Types.ObjectId(companyId), agentId: new mongoose.Types.ObjectId(agentId) } },
-      {
-        $group: {
-          _id: null,
-          totalRatings: { $sum: 1 },
-          avgRating: { $avg: '$rating' },
-          satisfiedCount: {
-            $sum: { $cond: [{ $gte: ['$rating', 4] }, 1, 0] }
-          },
-          count1Star: { $sum: { $cond: [{ $eq: ['$rating', 1] }, 1, 0] } },
-          count2Star: { $sum: { $cond: [{ $eq: ['$rating', 2] }, 1, 0] } },
-          count3Star: { $sum: { $cond: [{ $eq: ['$rating', 3] }, 1, 0] } },
-          count4Star: { $sum: { $cond: [{ $eq: ['$rating', 4] }, 1, 0] } },
-          count5Star: { $sum: { $cond: [{ $eq: ['$rating', 5] }, 1, 0] } }
-        }
-      }
-    ]);
 
     const feedbackData = feedbackAgg[0] || {
       totalRatings: 0,
@@ -119,10 +136,15 @@ class AgentDashboardService {
     const avgFirstResponseMs = avgFirstResponseAgg[0] ? avgFirstResponseAgg[0].avgTime : 0;
     const avgFirstResponseSec = Math.round(avgFirstResponseMs / 1000);
 
-        const avgResolutionMs = avgResolutionAgg[0] ? avgResolutionAgg[0].avgTime : 0;
+    const avgResolutionMs = avgResolutionAgg[0] ? avgResolutionAgg[0].avgTime : 0;
     const avgResMinutes = Math.floor(avgResolutionMs / 60000);
     const avgResSeconds = Math.floor((avgResolutionMs % 60000) / 1000);
-    const formattedAvgDuration = `${avgResMinutes}:${avgResSeconds < 10 ? '0' : ''}${avgResSeconds}s`;
+    const formattedAvgResDuration = `${avgResMinutes}:${avgResSeconds < 10 ? '0' : ''}${avgResSeconds}s`;
+
+    const avgCallMinutes = Math.floor(avgCallDurationSec / 60);
+    const avgCallSeconds = avgCallDurationSec % 60;
+    const formattedAvgCallDuration = `${avgCallMinutes}:${avgCallSeconds < 10 ? '0' : ''}${avgCallSeconds}s`;
+
 
     return {
       kpis: {
@@ -137,7 +159,7 @@ class AgentDashboardService {
         pendingTickets: pendingTicketsCount,
         avgLateReplySec: avgFirstResponseSec,
         avgLateReplyString: `${avgFirstResponseSec}s`,
-        avgCallDurationString: formattedAvgDuration,
+        avgCallDurationString: formattedAvgCallDuration,
         goalTickets: {
           total: goalTarget,
           current: resolvedTicketsCount,
@@ -146,6 +168,14 @@ class AgentDashboardService {
         avgFeedback: avgFeedbackValue,
         csatScore: csatPercentage 
       },
+      callStats: {
+        totalCalls,
+        answeredCalls,
+        missedCalls,
+        avgDurationSec: avgCallDurationSec,
+        avgDurationString: formattedAvgCallDuration
+      },
+
       feedbackStats: {
         totalRatings: feedbackData.totalRatings,
         avgRating: avgFeedbackValue,
@@ -159,13 +189,14 @@ class AgentDashboardService {
         }
       },
       tasks: {
-        assignedTicketsCount: totalAssigned,
+        assignedTicketsCount: totalAssignedCount || 0,
         openTicketsCount: pendingTicketsCount,
         inProgressTicketsCount: runningTicketsCount,
         resolvedTicketsCount,
         closedTicketsCount,
         lastActivityAt: profile?.lastLogin || null,
       },
+
       timeSeries: {
         assignedPerDay: assignedPerDay.map((d) => ({ date: d._id, count: d.count })),
         resolvedPerDay: resolvedPerDay.map((d) => ({ date: d._id, count: d.count })),

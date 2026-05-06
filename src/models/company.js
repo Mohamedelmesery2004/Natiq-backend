@@ -17,20 +17,25 @@ const companySchema = new mongoose.Schema(
     },
     industry: {
       type: String,
-      enum: ['telecom', 'banking', 'ecommerce', 'healthcare', 'other'],
-      default: 'telecom',
+      enum: ['telecom', 'banking', 'ecommerce', 'healthcare', 'sports_retail', 'other'],
+      default: 'sports_retail',
     },
     channelsConfig: {
       telegram: {
         botToken: { type: String, default: null },
+        webhookUrl: { type: String, default: null },
         webhookSecret: { type: String, default: null },
         isActive: { type: Boolean, default: false },
       },
       whatsapp: {
         isActive: { type: Boolean, default: false },
+        phoneNumberId: { type: String, default: null },
+        accessToken: { type: String, default: null },
       },
       webChat: {
         isActive: { type: Boolean, default: true },
+        color: { type: String, default: '#042835' },
+        welcomeMessage: { type: String, default: 'Welcome! How can we help you today?' },
       },
     },
     settings: {
